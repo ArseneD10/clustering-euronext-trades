@@ -1,6 +1,5 @@
 # Trade Flow Market Regime Analysis
-
-> Unsupervised discovery of market regimes through order-flow embeddings — without relying on price returns.
+> **Project Status:** 🛠️ *Active Research / Training Phase (as of April 2026)* > **Target:** Unsupervised discovery of market regimes through order-flow embeddings.
 
 ---
 
@@ -12,7 +11,7 @@ The central hypothesis is the following:
 
 $$\sigma = f(\Omega) \mid \Omega \not\ni R_t$$
 
-where $\sigma$ is realised volatility and $\Omega$ is a feature set that contains **no direct price-return signal** (volume, trade timing, trade type, issuer identity, …).
+where $\sigma$ is realised volatility and $\Omega$ is a feature set that contains **no direct price-return signal** (volume, trade timing, trade type, …).
 
 To test this, a **multi-task transformer encoder** is trained on several complementary objectives. The shared latent representations it produces are then used for clustering, regime detection, and cross-asset correlation analysis.
 
@@ -118,7 +117,7 @@ All experiments are orchestrated from **`notebook.ipynb`**, which covers:
 
 - The multi-task encoder successfully learns structured latent representations of trade flows without access to price returns.
 - **Task A (VAE)** provides a stable regularisation signal that anchors the shared encoder.
-- **Task B (Volatility)** demonstrates that price-agnostic features carry a measurable volatility signal.
+- **Task B (Volatility)** We observe quantile: [?, ?, ?] and the result shown that the model provide an average errors of 1.4 on test period which is in the top 30 % quantile, thus with the activation analysis we demonstrate with the fact than the activation patterns are consistent between all assets than the model generalize well on different asset.
 - **Task C (Directional)**: preliminary results suggest that pre-trained encoders from A & B provide a meaningful initialisation advantage over a randomly initialised encoder, though further experiments are needed.
 - A probabilistic volatility head ($V = \mu + \sigma \cdot \varepsilon$) was explored but discarded due to training instability; the deterministic regression formulation was retained.
 

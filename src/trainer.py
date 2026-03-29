@@ -15,9 +15,10 @@ from .config import OptimizerConfig
 
 class Trainer:
 
-    def __init__(self, model: nn.Module, optim_config: OptimizerConfig, buffer: dx.Buffer, train_size: float = 0.7, batch_size: int = 256):
+    def __init__(self, model: nn.Module, optim_config: OptimizerConfig, buffer: dx.Buffer, model_name: str, train_size: float = 0.7, batch_size: int = 256):
         self.model = model
         self.optimizer = optim_config.optimizer
+        self.model_name = model_name
 
         self.train_lenght = int(len(buffer )* train_size)
         strain = time.time()
@@ -66,7 +67,7 @@ class Trainer:
             ax2.plot(range(len(loss_test_history)), loss_test_history)
             ax2.grid()
             
-            fig.savefig(os.path.join(save_dir, "loss"))
+            fig.savefig(os.path.join(save_dir, f"{self.model_name}-loss history"))
             plt.show()
 
 
@@ -75,7 +76,7 @@ class VolatilityTrainer(Trainer):
     def __init__(self, model, optim_config, buffer, categorical_columns, train_size = 0.7, batch_size = 256, scale = 10):
         self.scale = scale
         self.categorical_columns = categorical_columns
-        super().__init__(model, optim_config, buffer, train_size, batch_size)
+        super().__init__(model=model, optim_config=optim_config, buffer=buffer, train_size=train_size, batch_size=batch_size, model_name="Volatility_Estimator")
 
     @staticmethod
     def _MSE(model, target, data, categorical):
@@ -124,7 +125,7 @@ class VolatilityTrainer(Trainer):
 class VAETrainer(Trainer):
 
     def __init__(self, model, optim_config, buffer, categorical_columns, train_size = 0.7, batch_size = 256):
-        super().__init__(model, optim_config, buffer, train_size, batch_size)
+        super().__init__(model=model, optim_config=optim_config, buffer=buffer, train_size=train_size, batch_size=batch_size, model_name="VAE")
         self.categorical_columns = categorical_columns
 
     @staticmethod
@@ -172,7 +173,7 @@ class VAETrainer(Trainer):
 class DiscretizedVolTrainer(Trainer):
 
     def __init__(self, model, optim_config, buffer, n_states = 3, train_size = 0.7, batch_size = 256):
-        super().__init__(model, optim_config, buffer, train_size, batch_size)
+        super().__init__(model, optim_config, buffer, train_size, batch_size, model_name='Volatility_Predictor')
         self.n_states = n_states
 
     @staticmethod

@@ -23,6 +23,13 @@ def get_best_cluster(embedding: np.ndarray, max_cluster: int = 100):
             best["model"] = deepcopy(km)
     return best
 
+def get_dbscan_cluster(embedding: np.ndarray):
+    dbs = DBSCAN(eps=1.0, min_samples=1, p=2)
+    pred = dbs.fit_predict(embedding)
+    mask = pred != -1
+    score = silhouette_score(embedding[mask], pred[mask], metric="euclidean")
+    return {"score": score, "pred": pred, "model": dbs}
+
 def plot_umap(embedding: np.ndarray, cluster: np.ndarray, save_fig = True):
     um = umap.UMAP(n_neighbors=15) # @todo optimize n_neighbors
     reduced_embedding = um.fit_transform(embedding)

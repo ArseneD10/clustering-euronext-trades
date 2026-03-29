@@ -19,6 +19,13 @@ class VolatilityPredictor(nn.Module):
             nn.ReLU()
         )
 
+    def forward_with_activation(self, categorical_features: Dict[str, mx.ArrayLike], features: mx.ArrayLike):
+        embedding, hook = self.encoder.forward_with_activation(features=features, categorical_features=categorical_features)
+        for idx, layer in enumerate(self.pred_head.layers):
+            embedding = layer(embedding)
+            hook[f"pred_head_layer_{idx}"] = embedding
+        return embedding, hook
+
     def __call__(self, categorical_features: Dict[str, mx.ArrayLike], features: mx.ArrayLike):
         encoder_output = self.encoder(features=features, categorical_features=categorical_features).mean(axis=1)
         pred = self.pred_head(encoder_output)

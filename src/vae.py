@@ -36,6 +36,7 @@ class VAE(nn.Module):
             nn.Dropout(vae_config.dropout_rate),
             nn.Linear(vae_config.hidden_size, encoder_config.encoder_input_size)
         )
+
         
     def _unembedding(self, categorial_input: mx.ArrayLike):
         # Split by embedding dim
@@ -67,6 +68,9 @@ class VAE(nn.Module):
             return mean + logvar * eps
         
         return mean
+    
+    def forward_with_activation(self, cfeatures: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike]):
+        pass
     
     def encode_latent(self, cfeatures: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike]):
         embedding = self.feature_encoder(features=cfeatures, categorical_features=categorical_features)
