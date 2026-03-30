@@ -68,7 +68,7 @@ A standard transformer block with **residual attention + MLP sublayers**
 | **(B)** | Volatility Estimator | Using only price-agnostic features ($\Omega$), the model predicts the **realised standard deviation of returns** over the selected window: $V = f(\Omega)$. |
 | **(C)** *(experimental)* | Volatility Predictor | Predicts the **Volatility estimated** over the next period. Tested in two settings: (i) using frozen encoders from tasks A & B to measure transfer value, (ii) using a randomly, not frozen, initialised  encoder as a baseline. |
 
-> **Note on task A** — A probabilistic output of the form $V = \mu + \sigma \cdot \varepsilon$ was tested but proved unstable during training; the final model uses a direct regression head.
+> **Note on task B and C** — A probabilistic output of the form $V = \mu + \sigma \cdot \varepsilon$ was tested but proved unstable during training; the final model uses a direct regression head.
 
 ---
 
@@ -79,6 +79,7 @@ A standard transformer block with **residual attention + MLP sublayers**
 | **A** | **Asset clustering** via company-ticker embeddings (k-means or equivalent on the categorical embeddings) |
 | **B** | **Residual–volatility study**: correlation analysis between model residuals and next-period volatility $\sigma_{t+1}$ |
 | **C** | **Gradient concentration analysis**: examination of where gradients focus in the early layers after fine-tuning steps |
+| **D** | **Activation concentration analysis**: examination of where activation focus all layers after fine-tuning steps |
 
 ---
 
@@ -88,13 +89,13 @@ A standard transformer block with **residual attention + MLP sublayers**
 .
 ├── notebook.ipynb          # End-to-end research pipeline (data → training → analysis)
 └── src/
-    ├── analysis.py         # Residual analysis & gradient magnitude inspection
+    ├── analysis.py         # Residual analysis & activation magnitude inspection
     ├── base_encoder.py     # Shared feature encoding backbone
     ├── clustering.py       # Embedding clustering & visualisation
     ├── config.py           # Model & optimiser hyperparameters
     ├── directional_nn.py   # Directional prediction head (task C)
-    ├── processing.py       # Pre-training data pipeline
-    ├── trainer.py          # Generic Trainer class
+    ├── processing.py       # Data pipeline
+    ├── trainer.py          # Trainer class
     ├── vae.py              # Variational Auto-Encoder head (task A)
     └── volatility_nn.py    # Volatility estimation head (task B)
 ```
@@ -107,26 +108,40 @@ All experiments are orchestrated from **`notebook.ipynb`**, which covers:
 
 1. Data loading and preprocessing via Polars
 2. Feature engineering and sequence construction
-3. Multi-task model training (tasks A, B, and optionally C)
+3. Multi-task model training (tasks A, B, and C)
 4. Embedding extraction and clustering
-5. Residual and gradient analyses
+5. Residual, gradient and activation analyses
 
 ---
 
-## Results & Observations
+## Results & Observations (In progress)
 
-- The multi-task encoder successfully learns structured latent representations of trade flows without access to price returns.
-- **Task A (VAE)** provides a stable regularisation signal that anchors the shared encoder.
-- **Task B (Volatility)** We observe quantile: [?, ?, ?] and the result shown that the model provide an average errors of 1.4 on test period which is in the top 30 % quantile, thus with the activation analysis we demonstrate with the fact than the activation patterns are consistent between all assets than the model generalize well on different asset.
-- **Task C (Directional)**: preliminary results suggest that pre-trained encoders from A & B provide a meaningful initialisation advantage over a randomly initialised encoder, though further experiments are needed.
-- A probabilistic volatility head ($V = \mu + \sigma \cdot \varepsilon$) was explored but discarded due to training instability; the deterministic regression formulation was retained.
+- **Task A (VAE)** Train loss show convergeance at -180.6 from -178.1 whereas Test Loss show slowy convergeance result with augmentation of 0.03 pts,
+
+
+- **Task B (Volatility Estimator)** We observe this quantile distribution for volatility: 
+|25, 50% 75% 90%|
+|0.38796467 0.55826437 0.85665661 1.62671494|
+µ = 2.41 | $\sigma$ = 0.90
+=============================
+RESULT WITH VOLATILITY SCALE = 10
+MSE TRAIN ~ 2.13 => RMSE TRAIN ~ 1.45
+MSE TEST ~ 1.48 => RMSE TEST ~ 1.2
+The above result shown than the model underperform the simple mean prediction
+which can possibly be explain by asymetrie in distribution off train dist &
+overall dist.
+However this model is currently not a good volatilty proxy, furthermore, we check some correlation (plot directory) shown than residual <-> target = 0.99
+This mean there's no relasionship beetween prediction & target
+===============================
+==============================
+RESULT WITH VOLATILITY SCALE = 1
+MSE TRAIN ~  => RMSE TRAIN ~ 
+MSE TEST ~  => RMSE TEST ~ 
+
+
+
+===============================
+- **Task C (Volatility Predictor)**: 
 
 ---
 
-## Research Question
-
-> *Can the structural profile of order flow — volume, timing, participant type — predict volatility without any price-return signal?*
-
-$$\boxed{\sigma = f(\Omega) \mid \Omega \not\ni R_t}$$
-
-This project is a first empirical step toward answering that question.

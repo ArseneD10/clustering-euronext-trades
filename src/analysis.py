@@ -97,6 +97,11 @@ def get_volatility_model_activation(model, buffer, categorical_col, scale=10, ma
     
     return tree
 
+def isin_to_company_name(isin: int):
+    pass
+
+def get_detokenizer(tokenizer, sub):
+    return {v: k for k, v in tokenizer[sub].items()}
 
 def _indexing_mlx(array, isin):
     # mlx doesnt implement boolean indexing since the array's size must be previsible 
@@ -130,47 +135,60 @@ def _analyse(volatility_sequence, residuals, model_name, save_fig = True, isin: 
     lookforward = 15
     corrcoeffs = []
 
-    for ids in range(1, lookforward+1):
-        vol = volatility_sequence[ids :]
-        res = residuals[: -ids]
-        corr = mx_corr(vol, res)
-        corrcoeffs.append(corr)
-    
-    corr = mx_corr(volatility_sequence, residuals)
-    corrcoeffs.append(corr)
+    if len(residuals) < autocorr_lag+1:
+        return []
 
     for ids in range(1, lookback+1):
         vol = volatility_sequence[: -ids]
         res = residuals[ids :]
         corr = mx_corr(vol, res)
         corrcoeffs.append(corr)
+
+    corr = mx_corr(volatility_sequence, residuals)
+    corrcoeffs.append(corr)
+
+    for ids in range(1, lookforward+1):
+        vol = volatility_sequence[ids :]
+        res = residuals[: -ids]
+        corr = mx_corr(vol, res)
+        corrcoeffs.append(corr)
     index = np.arange(len(corrcoeffs)) - lookforward
+
     
     if save_fig:
         fig = plt.figure(figsize=(21, 9))
-        ax1 = fig.add_subplot(511)
+        ax1 = fig.add_subplot(611)
         ax1.set_title(f"Corr volatility <-> {model_name} residuals")
         ax1.plot(index, corrcoeffs)
         ax1.set_xlabel("Residuals t")
         ax1.set_ylabel("Corr")
         ax1.grid()
 
-        ax2 = fig.add_subplot(512)
-        ax2.set_title(f"{model_name} residuals auto-corr")
+        ax2 = fig.add_subplot(612)
         plot_acf(residuals, ax=ax2, lags=autocorr_lag, zero=False, auto_ylims=True)
-
-        ax3 = fig.add_subplot(513)
-        ax3.set_title(f"{model_name} residuals partial auto-corr")
+        ax2.set_title(f"{model_name} residuals auto-corr")
+                
+        ax3 = fig.add_subplot(613)
         plot_pacf(residuals, ax=ax3, lags=autocorr_lag, zero=False, auto_ylims=True)  
-
-        ax4 = fig.add_subplot(514)
-        ax4.set_title(f"{model_name} volatility auto-corr")
+        ax3.set_title(f"{model_name} residuals partial auto-corr")
+        
+        ax4 = fig.add_subplot(614)
         plot_acf(volatility_sequence, ax=ax4, lags=autocorr_lag, zero=False, auto_ylims=True)
-
-        ax5 = fig.add_subplot(515)
-        ax5.set_title(f"{model_name} volatility partial auto-corr")
+        ax4.set_title(f"{model_name} volatility auto-corr")
+        
+        ax5 = fig.add_subplot(615)
         plot_pacf(volatility_sequence, ax=ax5, lags=autocorr_lag, zero=False, auto_ylims=True)  
-    
+        ax5.set_title(f"{model_name} volatility partial auto-corr")
+        
+
+        ax6 = fig.add_subplot(616)
+        ax6.set_title(f"{model_name} residuals")
+        ax6.plot(range(len(residuals)), residuals)
+        ax6.set_xlabel("t")
+        ax6.set_ylabel("résiduals")
+        ax6.grid()
+
+
         fig.savefig(f"plot/{model_name}_residual_{isin}")
         
         plt.show()

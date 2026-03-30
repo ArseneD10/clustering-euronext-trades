@@ -172,9 +172,10 @@ class VAETrainer(Trainer):
 
 class DiscretizedVolTrainer(Trainer):
 
-    def __init__(self, model, optim_config, buffer, n_states = 3, train_size = 0.7, batch_size = 256):
-        super().__init__(model, optim_config, buffer, train_size, batch_size, model_name='Volatility_Predictor')
+    def __init__(self, model, optim_config, buffer, categorical_columns, n_states = 3, train_size = 0.7, batch_size = 256):
+        super().__init__(model=model, optim_config=optim_config, buffer=buffer, train_size=train_size, batch_size=batch_size, model_name='Volatility_Predictor')
         self.n_states = n_states
+        self.categorical_columns = categorical_columns
 
     @staticmethod
     def _CEL(model, inputs, target):
@@ -188,7 +189,7 @@ class DiscretizedVolTrainer(Trainer):
         batch_count = 0
 
         for batch in tqdm(stream):
-            target = mx.array(batch["target"]) * self.scale       
+            target = mx.array(batch["target"])       
             categorical   = unflatten(self.categorical_columns, batch["categorical"])
             data   = mx.array(batch["data"])
             loss_value, grad = loss(model=self.model, inputs={"features": data, "categorical_features": categorical}, target=target)
@@ -208,7 +209,7 @@ class DiscretizedVolTrainer(Trainer):
         batch_count = 0
         
         for batch in stream:
-            target = mx.array(batch["target"]) * self.scale       
+            target = mx.array(batch["target"])   
             categorical   = unflatten(self.categorical_columns, batch["categorical"])
             data   = mx.array(batch["data"])
             pred = self.model(features=data, categorical_features=categorical)

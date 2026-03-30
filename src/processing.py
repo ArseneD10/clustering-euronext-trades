@@ -187,7 +187,8 @@ def get_volatility_discretize_seq(data, categorical_col, continous_col, sq_size,
             )
 
         length = len(dt)
-        if length < sq_size or dt.is_empty():
+        fit_size = int(len(dt)*fit_period)
+        if fit_size < sq_size or dt.is_empty():
             continue
 
         arr   = dt.sort("event_ts").select(continous_col).to_numpy()        
