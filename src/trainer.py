@@ -99,7 +99,7 @@ class VolatilityTrainer(Trainer):
             grad, _ = optim.clip_grad_norm(grad, max_norm=1.0)
             self.optimizer.update(self.model, grad)
             mx.eval(self.model.parameters(), self.optimizer.state, loss_value)
-            total_loss+= loss_value.item() / self.scale
+            total_loss+= loss_value.item() / (self.scale**2)
                 
             batch_count+=1
 
@@ -117,7 +117,7 @@ class VolatilityTrainer(Trainer):
             data   = mx.array(batch["data"])
             pred = self.model(features=data, categorical_features=categorical)
             loss_value = ((target - pred)**2).mean().sqrt()
-            total_loss+= loss_value.item() / self.scale # call eval
+            total_loss+= loss_value.item() / (self.scale ** 2)# call eval
             batch_count+=1
 
         return total_loss / batch_count

@@ -37,10 +37,12 @@ def get_vae_residuals(model, buffer, categorical_col):
         categorical_input = unflatten(col=categorical_col, array=batch["categorical"], unsqueeze=True)
         isin_id = int(batch["categorical"][0, isin_ids])
         loss_residual = vae_loss(model, c_input, categorical_input)
+        
         if residuals.get(isin_id):
             residuals[isin_id].append(loss_residual.item())
         else:
             residuals[isin_id] = [loss_residual.item()]
+    
     return residuals
 
 def get_volatility_residuals(model, buffer, categorical_col, scale):
@@ -49,14 +51,16 @@ def get_volatility_residuals(model, buffer, categorical_col, scale):
     isin_ids = [ids for ids, c in enumerate(categorical_col) if c == "MifidInstrumentID"][0]
     for batch in tqdm(buffer):
         target = mx.array(batch["target"], mx.float32) * scale
-        c_input = mx.array(batch["data"], mx.float32)[None, :]
+        c_input = mx.array(batch["data"], mx.float32)[None, :, :]
         categorical_input = unflatten(col=categorical_col, array=batch["categorical"], unsqueeze=True)
         loss_residual = volatility_loss(model, c_input, categorical_input, target=target)
         isin_id = int(batch["categorical"][0, isin_ids])
+        
         if residuals.get(isin_id):
-            residuals[isin_id].append(loss_residual.item() / scale)
+            residuals[isin_id].append(loss_residual.item() / (scale**2))
         else:
-            residuals[isin_id] = [loss_residual.item() / scale]
+            residuals[isin_id] = [loss_residual.item() / (scale**2)]
+    
     return residuals
 
 def get_vae_residuals_and_grad(model, buffer, categorical_col):
@@ -110,9 +114,18 @@ def _indexing_mlx(array, isin):
     np_array = np_array[mask] # [SEQUENCE, 2] (Vol, isin ids)
     return mx.array(np_array[:, 0]) 
 
-def analyse_vae_residuals(model, buffer, volatility_sequence: mx.ArrayLike, categorical_col: List[str], save_fig: bool = True, name="vae"):
+def analyse_vae_residuals(model, buffer, volatility_sequence: mx.ArrayLike, categorical_col: List[str], save_fig: bool = True, name="vae", top_pct=0.5):
     residuals = get_vae_residuals(model, buffer, categorical_col)
-    _analyse(volatility_sequence=volatility_sequence, residuals=residuals, model_name=name, save_fig=save_fig)
+    mean_corr = get_most_significant_analyse(volatility_sequence, residuals)
+    top_k = int(len(mean_corr)*top_pct)
+    print(top_k, '<_top k')
+    best_corr = mean_corr.top_k(k=top_k, by="score", reverse=False)
+    print("View of topk ->", best_corr)
+    for row in best_corr.iter_rows(named=True):
+        isin = row["isin_id"]
+        res = residuals[isin]
+        vol_seq = _indexing_mlx(volatility_sequence, isin)
+        _analyse(volatility_sequence=vol_seq, residuals=res, model_name=name, save_fig=save_fig, isin=isin)
 
 def analyse_volatility_residuals(model, buffer, volatility_sequence: mx.ArrayLike, categorical_col: List[str], scale, save_fig: bool = True, name="volatility_clustering", top_pct: float=0.3):
     residuals = get_volatility_residuals(model, buffer, categorical_col, scale)

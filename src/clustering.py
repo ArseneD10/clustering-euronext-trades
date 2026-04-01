@@ -59,13 +59,11 @@ def plot_pca_cluster(embedding: np.ndarray, cluster: np.ndarray, save_fig = True
         fig.savefig("pca_cluster")
     plt.show()
 
-def get_group(pred: np.ndarray, pred_labels: List[int], sub_tokenizer: Dict[str, int]):
-    assert(len(pred) == len(pred_labels)), f"Prediction and Prediction labels must be same lenght, got {len(pred)} and {len(pred_labels)}"
+def get_group(cluster_pred ,pred_labels: List[int], sub_tokenizer: Dict[str, int]):
     detokenizer = {v: k for k, v in sub_tokenizer.items()}
-    n_clusters = np.unique(pred)
-    group = {n: [] for n in range(n_clusters)}
-    
-    for p, label in zip(pred, pred_labels):
+    n_clusters = np.unique(cluster_pred)
+    group = {n: [] for n in n_clusters}
+    for p, label in zip(cluster_pred, pred_labels):
         group[p].append(detokenizer[label])
     
     return group
