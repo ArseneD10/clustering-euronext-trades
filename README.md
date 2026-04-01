@@ -114,34 +114,11 @@ All experiments are orchestrated from **`notebook.ipynb`**, which covers:
 
 ---
 
-## Results & Observations (In progress)
 
-- **Task A (VAE)** Train loss show convergeance at -180.6 from -178.1 whereas Test Loss show slowy convergeance result with augmentation of 0.03 pts,
+## Research Insights & Challenges (In Progress)
+Current Observations:
 
+Latent Space: The VAE shows strong convergence on reconstruction, suggesting the encoder effectively captures the "syntax" of trade flows.
 
-- **Task B (Volatility Estimator)** We observe this quantile distribution for volatility: 
-|25, 50% 75% 90%|
-|0.38796467 0.55826437 0.85665661 1.62671494|
-µ = 2.41 | $\sigma$ = 0.90
-=============================
-RESULT WITH VOLATILITY SCALE = 10
-MSE TRAIN ~ 2.13 => RMSE TRAIN ~ 1.45
-MSE TEST ~ 1.48 => RMSE TEST ~ 1.2
-The above result shown than the model underperform the simple mean prediction
-which can possibly be explain by asymetrie in distribution off train dist &
-overall dist.
-However this model is currently not a good volatilty proxy, furthermore, we check some correlation (plot directory) shown than residual <-> target = 0.99
-This mean there's no relasionship beetween prediction & target
-===============================
-==============================
-RESULT WITH VOLATILITY SCALE = 1
-MSE TRAIN ~  => RMSE TRAIN ~ 
-MSE TEST ~  => RMSE TEST ~ 
-
-
-
-===============================
-- **Task C (Volatility Predictor)**: 
-
----
+The Volatility Gap: Preliminary results for Task B show the model currently struggles to outperform a naive mean baseline (MSE ~1.48 vs 1.45). This suggests a high noise-to-signal ratio in price-agnostic features or a potential distribution shift between training and test sets.
 
