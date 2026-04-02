@@ -5,7 +5,7 @@ from .config import EncoderConfig, VolatilityConfig
 from .base_encoder_nn import Encoder
 from typing import Dict
 
-class VolatilityPredictor(nn.Module):
+class VolatilityEstimator(nn.Module):
 
     def __init__(self, encoder_config: EncoderConfig, volatility_config: VolatilityConfig):
         super().__init__()
@@ -31,7 +31,7 @@ class VolatilityPredictor(nn.Module):
         pred = self.pred_head(encoder_output)
         return pred
 
-class VariationalVolatilityPredictor(nn.Module):
+class VariationalVolatilityEstimator(nn.Module):
 
     def __init__(self, encoder_config: EncoderConfig, volatility_config: VolatilityConfig):
         super().__init__()

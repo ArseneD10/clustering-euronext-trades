@@ -176,6 +176,7 @@ def get_vae_seq(data, categorical_col, continous_col, sq_size):
     return out
 
 def get_volatility_discretize_seq(data, categorical_col, continous_col, sq_size, n_states=3, fit_period = 0.7): 
+    # Note : discretizer la volatilité comme ça implique un biais look-ahead, une meilleure approche serait une expanding window
     out = []
     quantile = [n / n_states for n in range(1, n_states)]
     for k in tqdm(range(len(data))):
@@ -216,6 +217,21 @@ def get_volatility_discretize_seq(data, categorical_col, continous_col, sq_size,
         )
 
     return out
+
+def get_dataset_volatility(df: pl.DataFrame, tokenizer):
+        
+    d = df.with_columns(
+        pl.col('EventTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.9fZ").dt.timestamp().alias("event_ts"),
+        pl.col("MifidPrice").log().diff().ewm_std(span=20).over("MifidInstrumentID").alias("Volatility20"),
+        pl.col("MifidPrice").log().diff().ewm_std(span=40).over("MifidInstrumentID").alias("Volatility40"),
+        pl.col("MifidPrice").log().diff().ewm_std(span=80).over("MifidInstrumentID").alias("Volatility80"),
+        pl.col("MifidPrice").log().diff().over("MifidInstrumentID").alias("log_return"),
+        pl.col("MifidInstrumentID").replace(tokenizer["MifidInstrumentID"]).cast(pl.Int32).alias("MifidInstrumentID")
+
+    ).select(["Volatility20", "Volatility40", "Volatility80", "log_return", "MifidInstrumentID", "event_ts"])
+
+    return d
+
 
 
 def get_num_embedding(df: pl.DataFrame, cols: List[str]):
