@@ -95,7 +95,12 @@ def run_analyse(df: pl.DataFrame, col, model, tokenizer): # @Arsene to improve
     data = mx.array(data, dtype=mx.int32)
     print(data.shape)
     model_inpt = {col: data}
-    pred = model.feature_encoder.categorical_encoder({col: data})[col]
+    if hasattr(model, "feature_encoder"):
+        pred = model.feature_encoder.categorical_encoder({col: data})[col]
+    elif hasattr(model, "encoder"):
+        pred = model.encoder.categorical_encoder({col: data})[col]
+    else:
+        raise ValueError("No attr named encoder or feature_encoder found in model")
     mx.eval(pred)
     if len(pred.shape) > 2:
         pred = pred[:,0,:]
