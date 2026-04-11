@@ -243,6 +243,14 @@ def get_num_embedding(df: pl.DataFrame, cols: List[str]):
 
     return num_embedding
 
+def get_num_embedding_tokenizer(tokenizer: dict, cols: List[str]):
+    buffer = 10
+    num_embedding = []
+    for col in cols:
+        n = len(tokenizer[col]) + buffer
+        num_embedding.append(n)
+
+    return num_embedding
 
 if __name__ == "__main__":
     save_path = 'tokenizer.json'

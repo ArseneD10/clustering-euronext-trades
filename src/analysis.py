@@ -17,12 +17,17 @@ def mx_corr(a: mx.ArrayLike, b: mx.ArrayLike):
     return cov / (a.std() * b.std())
 
 def vae_loss(model, c_input, categorical_input):
-    c_pred, categorical_pred = model(features=  c_input, categorical_features = categorical_input)
-    c_mse = mx.mean(mx.sum((c_input - c_pred)**2, axis=-1), axis=-1)
-    categorical_loss = mx.array([0.0])
+    LAMBDA_CAT = 0.01
+    BETA = 0.1
+    c_pred, categorical_pred, params = model(features=c_input, categorical_features=categorical_input)
+    c_mse = mse_loss(c_pred, c_input, reduction="mean")
+    categorical_loss = mx.array(0.0, dtype=mx.float32)
     for name in list(categorical_input.keys()):
-        categorical_loss += cross_entropy(categorical_input[name], categorical_pred[name], reduction="mean")
-    return c_mse + categorical_loss
+        categorical_loss += cross_entropy(categorical_input[name], categorical_pred[name], reduction="mean") 
+    mu, logvar = params
+    kl_loss = mx.mean(-0.5 * mx.sum(1. + logvar - mu**2 - mx.exp(logvar)))
+
+    return c_mse + (categorical_loss*LAMBDA_CAT) + kl_loss * BETA
 
 def volatility_loss(model, c_input, categorical_input, target):
     pred = model(features=  c_input, categorical_features = categorical_input)

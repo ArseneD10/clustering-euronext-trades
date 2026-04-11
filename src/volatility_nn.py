@@ -5,6 +5,8 @@ from .config import EncoderConfig, VolatilityConfig
 from .base_encoder_nn import Encoder
 from typing import Dict
 
+from .utils import tensor_to_int8
+
 class VolatilityEstimator(nn.Module):
 
     def __init__(self, encoder_config: EncoderConfig, volatility_config: VolatilityConfig):
@@ -52,11 +54,14 @@ class VariationalVolatilityEstimator(nn.Module):
             nn.ReLU()
         )
 
-    def forward_with_activation(self, categorical_features: Dict[str, mx.ArrayLike], features: mx.ArrayLike):
+    def forward_with_activation(self, categorical_features: Dict[str, mx.ArrayLike], features: mx.ArrayLike, quantized=True):
         embedding, hook = self.encoder.forward_with_activation(features=features, categorical_features=categorical_features)
         for idx, layer in enumerate(self.pred_head.layers):
             embedding = layer(embedding)
             hook[f"pred_head_layer_{idx}"] = embedding
+        if quantized:
+            for name in list(hook.keys()):
+                hook[name] = tensor_to_int8(hook[name])
         return embedding, hook
 
     def _reparametrize(self, input_):

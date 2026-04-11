@@ -5,6 +5,7 @@ from .base_encoder_nn import Encoder
 from .config import EncoderConfig, VAEConfig
 
 from typing import Dict
+from .utils import tensor_to_int8
 
 
 class VAE(nn.Module):
@@ -65,18 +66,33 @@ class VAE(nn.Module):
         if self._training:
             logvar = self.logvar(hidden_states)
             eps = mx.random.normal(shape=logvar.shape)
-            return mean + logvar * eps
+            return mean + mx.exp(logvar**0.5) * eps, (mean, logvar)
+        return mean, (mean, 0.0)
+    
+    def forward_with_activation(self, cfeatures: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike], quantized=True):
+        embedding, hook = self.feature_encoder.forward_with_activation(features=cfeatures, categorical_features=categorical_features)
+        hidden_states = self.base(embedding)
+        hook["vae_hidden_states_encoder"] = hidden_states
+        latent, params = self._reparametrize(hidden_states)
+        hook["vae_latent"] = latent
+        decode = self.decode_latent(latent)
+        hook["vae_hidden_states_decoder"] = decode
+        categorical_lenght = sum(self.encoder_config.embedding_dim)
+        categorical_decode = decode[..., :categorical_lenght]
+        categorical_decode = self._unembedding(categorical_decode)
+        continous_decode = decode[..., categorical_lenght :]
         
-        return mean
-    
-    def forward_with_activation(self, cfeatures: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike]):
-        pass
-    
+        if quantized:
+            for name in list(hook.keys()):
+                hook[name] = tensor_to_int8(hook[name])
+
+        return continous_decode, categorical_decode, params, hook
+
     def encode_latent(self, cfeatures: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike]):
         embedding = self.feature_encoder(features=cfeatures, categorical_features=categorical_features)
         hidden_states = self.base(embedding)
-        latent = self._reparametrize(hidden_states)
-        return latent
+        latent, params = self._reparametrize(hidden_states)
+        return latent, params
     
     def decode_latent(self, latent: mx.ArrayLike):
         decode = self.decoder(latent)
@@ -87,6 +103,6 @@ class VAE(nn.Module):
         return continous_decode, categorical_decode
 
     def __call__(self, features: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike]):
-        latent = self.encode_latent(features,categorical_features=categorical_features)
-        return self.decode_latent(latent)
+        latent, params = self.encode_latent(features,categorical_features=categorical_features)
+        return self.decode_latent(latent), params
     

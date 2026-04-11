@@ -131,12 +131,17 @@ class VAETrainer(Trainer):
     @staticmethod
     def _VAE_LOSS(model, c_input, categorical_input):
         LAMBDA_CAT = 0.01
-        c_pred, categorical_pred = model(features=c_input, categorical_features=categorical_input)
+        BETA = 0.1
+        (c_pred, categorical_pred), params = model(features=c_input, categorical_features=categorical_input)
         c_mse = nn.losses.mse_loss(c_pred, c_input, reduction="mean")
         categorical_loss = mx.array(0.0, dtype=mx.float32)
         for name in list(categorical_input.keys()):
             categorical_loss += nn.losses.cross_entropy(categorical_input[name], categorical_pred[name], reduction="mean")
-        return c_mse + (categorical_loss*LAMBDA_CAT)
+        
+        mu, logvar = params
+        kl_loss = mx.mean(-0.5 * mx.sum(1. + logvar - mu**2 - mx.exp(logvar)))
+
+        return c_mse + (categorical_loss*LAMBDA_CAT) + kl_loss * BETA
     
     def _train(self, stream):
         loss = nn.value_and_grad(self.model, self._VAE_LOSS)
