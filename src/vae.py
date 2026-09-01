@@ -29,6 +29,7 @@ class VAE(nn.Module):
         self.logvar = nn.Sequential(
             nn.Linear(vae_config.hidden_size, self.latent_dim),
             nn.LayerNorm(self.latent_dim),
+
         )
 
         self.decoder = nn.Sequential(
@@ -65,8 +66,10 @@ class VAE(nn.Module):
         mean = self.mean(hidden_states)
         if self._training:
             logvar = self.logvar(hidden_states)
+            if mx.isnan(logvar).any():
+                logvar=mx.zeros_like(logvar)
             eps = mx.random.normal(shape=logvar.shape)
-            return mean + mx.exp(logvar**0.5) * eps, (mean, logvar)
+            return mean + mx.exp(logvar*0.5) * eps, (mean, logvar)
         return mean, (mean, 0.0)
     
     def forward_with_activation(self, cfeatures: mx.ArrayLike, categorical_features: Dict[str, mx.ArrayLike], quantized=True):

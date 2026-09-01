@@ -1,12 +1,18 @@
 import polars as pl
 import numpy as np
 from numpy.lib.stride_tricks import sliding_window_view
+from datetime import timedelta
 
 import os
 from typing import List
 import json
 from tqdm import tqdm
+import requests
 
+def load_market_cap(url):
+    r = requests.get(url)
+    r.raise_for_status()
+    return pl.DataFrame(r.json())
 
 def get_trades_tokenizer(df: pl.DataFrame, cat_columns = ["TradeType", "MifidInstrumentID", "MmtMarketMechanism", "MmtTradingMode", "MmtAlgorithmicIndicator", "Venue"]):
     trade_tokenizer = {}
@@ -62,10 +68,11 @@ def compute_df_feature(df: pl.DataFrame, norm_log_return_window: int = 10, norm_
     max_cut = max(norm_log_return_window, norm_volume_window)
     
     d = df.with_columns(
-        pl.col('EventTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.9fZ").dt.timestamp().alias("event_ts"),
-        pl.col('TradingDateTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.9fZ").dt.timestamp().alias("trading_ts"),
-        pl.col('PublicationDateTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.9fZ").dt.timestamp().alias("publication_ts"),
+        pl.col('EventTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.fZ").dt.timestamp().alias("event_ts"),
+        pl.col('TradingDateTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.fZ").dt.timestamp().alias("trading_ts"),
+        pl.col('PublicationDateTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.fZ").dt.timestamp().alias("publication_ts"),
     )
+    d = d.sort("EventTime")
     d = d.with_columns([
        
         (pl.col("event_ts") - pl.col("event_ts").min().over("MifidInstrumentID")).alias("rel_time")
@@ -75,17 +82,14 @@ def compute_df_feature(df: pl.DataFrame, norm_log_return_window: int = 10, norm_
     ])
 
     d = d.group_by("MifidInstrumentID").agg([
-        pl.col("event_ts").diff().log1p().alias("delta_event_ts"),
-        pl.col("trading_ts").diff().log1p().alias("delta_trading_ts"),
-        pl.col("publication_ts").diff().log1p().alias("delta_publication_ts"),
-
+        pl.col("event_ts").log().diff().alias("delta_ts"),
         pl.col("MifidPrice").log().diff().alias("log_return"), # Further implementation
         pl.col('MifidQuantity').log1p().alias("log_volume"),
         (pl.col("MifidPrice").log().diff() - pl.col("MifidPrice").log().diff().rolling_mean(norm_log_return_window)).alias('norm_log_return'),
         (pl.col("MifidQuantity").log1p() - pl.col("MifidQuantity").log1p().rolling_mean(norm_log_return_window)).alias('norm_volume'),
         pl.col(pl.Int32),
 
-        pl.col(["event_ts", "time_cos", "time_sin"])
+        pl.col(["event_ts", "time_cos", "time_sin", "MifidPrice"])
     ]).with_columns(
         pl.col(pl.List).list.slice(max_cut) # drop nulls
     )
@@ -144,6 +148,17 @@ def get_volatility_seq(data, categorical_col, continous_col, sq_size):
     print("Target quantile -->", target_quantiles)
     return out
 
+def get_sequence_by_isin(data: pl.DataFrame, fun, **fun_args):
+    seq = []
+    isins = data["MifidInstrumentID"].unique()
+    for isin in isins:
+        filtered = data.filter(pl.col("MifidInstrumentID") == isin)
+        seq.extend(
+            fun(data=filtered, **fun_args)
+        )
+
+    return seq
+
 def get_vae_seq(data, categorical_col, continous_col, sq_size):  
     out = []
     for k in tqdm(range(len(data))):
@@ -167,8 +182,80 @@ def get_vae_seq(data, categorical_col, continous_col, sq_size):
         
         out.extend(
             {  
-                "categorical": cat_windows[i][0].copy().astype(np.float32),
+                "categorical": cat_windows[i][0].copy().astype(np.int32),
                 "data": windows[i][0].copy().astype(np.float32),
+            }
+            for i in range(len(windows))
+        )
+
+    return out
+
+def get_vae_seq_with_lr(data, categorical_col, continous_col, sq_size):  
+    out = []
+    for k in tqdm(range(len(data))):
+        row = data[k]
+        
+        dt = (
+            row.explode(pl.all().exclude([pl.String, pl.Float64, pl.Int32, pl.Int64]))
+                .drop_nulls()
+                .drop_nans()
+            )
+
+        length = len(dt)
+        if length < sq_size or dt.is_empty():
+            continue
+
+        dt = dt.sort("event_ts")
+
+        arr   = dt.select(continous_col).to_numpy()        
+        cat  = dt.select(categorical_col).to_numpy()
+        lr = dt.select("log_return").to_numpy()
+        
+        windows = sliding_window_view(arr, window_shape=(sq_size, arr.shape[-1])) 
+        cat_windows = sliding_window_view(cat, window_shape=(sq_size, cat.shape[-1]))
+        lr = sliding_window_view(lr, window_shape=(sq_size, lr.shape[-1]))
+        
+        out.extend(
+            {  
+                "categorical": cat_windows[i][0].copy().astype(np.int32),
+                "data": windows[i][0].copy().astype(np.float32),
+                "log_return": lr[i].copy().astype(np.float32).flatten() 
+            }
+            for i in range(len(windows))
+        )
+
+    return out
+
+def get_vae_seq_with_var(data, categorical_col, continous_col, sq_size):  
+    out = []
+    for k in tqdm(range(len(data))):
+        row = data[k]
+        
+        dt = (
+            row.explode(pl.all().exclude([pl.String, pl.Float64, pl.Int32, pl.Int64]))
+                .drop_nulls()
+                .drop_nans()
+            )
+
+        length = len(dt)
+        if length < sq_size or dt.is_empty():
+            continue
+
+        dt = dt.sort("event_ts")
+
+        arr   = dt.select(continous_col).to_numpy()        
+        cat  = dt.select(categorical_col).to_numpy()
+        price = dt.select("MifidPrice").to_numpy()
+        
+        windows = sliding_window_view(arr, window_shape=(sq_size, arr.shape[-1])) 
+        cat_windows = sliding_window_view(cat, window_shape=(sq_size, cat.shape[-1]))
+        price = sliding_window_view(price, window_shape=(sq_size, price.shape[-1]))
+        
+        out.extend(
+            {  
+                "categorical": cat_windows[i][0].copy().astype(np.int32),
+                "data": windows[i][0].copy().astype(np.float32),
+                "var": np.log(price[i].max() / price[i].min()).copy().astype(np.float32).flatten() 
             }
             for i in range(len(windows))
         )
@@ -206,7 +293,7 @@ def get_volatility_discretize_seq(data, categorical_col, continous_col, sq_size,
    
         out.extend(
             {  
-                "categorical": cat_windows[i][0].copy().astype(np.float32),
+                "categorical": cat_windows[i][0].copy().astype(np.int32),
                 "data": windows[i][0].copy().astype(np.float32),
                 "target": np.digitize(
                     delta_window[i+1].std() if (delta_window[i+1] != 0.0).sum() != 0.0 else 0.0,
@@ -217,6 +304,9 @@ def get_volatility_discretize_seq(data, categorical_col, continous_col, sq_size,
         )
 
     return out
+
+def get_cross_volatility_sequence():
+    pass
 
 def get_dataset_volatility(df: pl.DataFrame, tokenizer):
         
@@ -232,6 +322,38 @@ def get_dataset_volatility(df: pl.DataFrame, tokenizer):
 
     return d
 
+def get_cross_volatility_dataset(df: pl.DataFrame):
+
+    START_HOUR = 9
+    START_MIN = 0
+
+    d = (df.with_columns(
+        pl.col('EventTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.9fZ").dt.timestamp().alias("event_ts"),
+        pl.col('EventTime').str.to_datetime(format= "%Y-%m-%dT%H:%M:%S%.9fZ").dt.convert_time_zone("Europe/Paris").alias("event_time"),
+        pl.col("MifidPrice").log().diff().over("MifidInstrumentID").alias("log_return"),
+
+    )
+    .with_columns(
+        (pl.col("event_time") - (pl.col("event_time").dt.truncate("1d") + timedelta(days=0, hours=START_HOUR,minutes=START_MIN))).dt.total_milliseconds().log1p().alias("log_duration_since_opening"),
+        (pl.col("event_ts").log().diff().alias("delta_ts")),
+    )).sort(by="event_time")
+
+    print(d.tail(1))
+
+    d = d.group_by_dynamic("event_time", every="1d", group_by="MifidInstrumentID").agg([
+        (pl.col("log_return").std() * 252**0.5).alias("daily_volatility"),
+        pl.col("MifidQuantity").log().alias("log_volume"),
+        (pl.col("MifidQuantity") / pl.col("MifidQuantity").rolling_mean(window_size=10)).alias("norm_volume"),
+        pl.col(pl.Int32),
+    ]).sort(by="event_time")
+
+    
+    return d
+
+def get_tick_bar(df: pl.DataFrame, tick_size=5) -> pl.DataFrame:
+    # -> Utiliser un encodage one hot pour les features catégorique ? ou prendre la catégorie avec + de count ?
+    # @todo
+    pass
 
 
 def get_num_embedding(df: pl.DataFrame, cols: List[str]):
@@ -240,7 +362,6 @@ def get_num_embedding(df: pl.DataFrame, cols: List[str]):
     for col in cols:
         n = df.select(col).unique().__len__() + buffer
         num_embedding.append(n)
-
     return num_embedding
 
 def get_num_embedding_tokenizer(tokenizer: dict, cols: List[str]):
@@ -249,22 +370,26 @@ def get_num_embedding_tokenizer(tokenizer: dict, cols: List[str]):
     for col in cols:
         n = len(tokenizer[col]) + buffer
         num_embedding.append(n)
-
     return num_embedding
+
+
 
 if __name__ == "__main__":
     save_path = 'tokenizer.json'
     df = get_all_dataset()
     tokenizer = get_trades_tokenizer(df)
     print("Tokenizer->", tokenizer)
-    save_tokenizer(tokenizer, path=save_path)
+    #save_tokenizer(tokenizer, path=save_path)
     df = encode_df_feature(df, tokenizer=tokenizer)
-    print(df.tail())
+    #print(df.tail())
 
-    df = compute_df_feature(df)
-    print(df.tail())
+    #df = compute_df_feature(df)
+    #print(df.tail())
 
-    ccol = ["delta_event_ts", "log_return", "log_volume", "norm_log_return", "norm_volume"]
-    seq = get_volatility_seq(df, list(tokenizer.keys()), continous_col=ccol, sq_size=20)
+    #ccol = ["delta_event_ts", "log_return", "log_volume", "norm_log_return", "norm_volume"]
+    #seq = get_volatility_seq(df, list(tokenizer.keys()), continous_col=ccol, sq_size=20)
 
-    print(seq[-2])
+    #print(seq[-2])
+
+    vol_df = get_cross_volatility_dataset(df)
+    print(vol_df)

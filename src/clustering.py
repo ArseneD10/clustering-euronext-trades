@@ -8,13 +8,17 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 import polars as pl
 import mlx.core as mx
+from src.base_encoder_nn import unflatten
+from tqdm import tqdm
 
 SEED = 22
 np.random.seed(SEED)
 
 
-def get_best_cluster(embedding: np.ndarray, max_cluster: int = 100):
+def get_best_cluster(embedding: np.ndarray, max_cluster: int = 5, fit_period: int = 0.7):
     best = {"score": -1.0, "cluster": 0, "model": None}  
+    fit_size = int(len(embedding)*fit_period)
+    embedding = embedding[: fit_size]
     for c in range(2, max_cluster+1):
         km = KMeans(n_clusters=c, init="k-means++", random_state=SEED)
         pred = km.fit_predict(embedding)
@@ -38,35 +42,43 @@ def get_dbscan_cluster(embedding: np.ndarray):
     return {"score": score, "pred": pred, "model": dbs}
 
 def plot_umap(embedding: np.ndarray, cluster: np.ndarray, save_fig = True):
-    um = umap.UMAP(n_neighbors=15) # @todo optimize n_neighbors
+    states = np.unique(cluster)
+    print("Total state->", states)
+    um = umap.UMAP(n_neighbors=15, random_state=SEED) # @todo optimize n_neighbors
     reduced_embedding = um.fit_transform(embedding)
     fig = plt.figure(figsize=(12, 9))
     ax = fig.add_subplot(111)
     ax.set_title("Reduced embedding Umap")
-    ax.scatter(reduced_embedding[:, 0], reduced_embedding[:, 1], c=cluster)
+    for state in states:
+        ax.scatter(reduced_embedding[cluster==state][:, 0], reduced_embedding[cluster==state][:, 1], label=f"State {state}")
     ax.set_xlabel("Component 1")
     ax.set_ylabel("Component 2")
     ax.grid()
     if save_fig:
         fig.savefig("pca_cluster")
+    plt.legend()
     plt.show()
 
 def plot_pca_cluster(embedding: np.ndarray, cluster: np.ndarray, save_fig = True):
     assert(len(embedding) == len(cluster))
+    states = np.unique(cluster)
     pca = PCA(n_components=2)
     reduced_embedding = pca.fit_transform(embedding)
     fig = plt.figure(figsize=(12, 9))
     ax = fig.add_subplot(111)
     ax.set_title("Reduced embedding PCA")
-    ax.scatter(reduced_embedding[:, 0], reduced_embedding[:, 1], c=cluster)
+    for state in states:
+        ax.scatter(reduced_embedding[cluster==state][:, 0], reduced_embedding[cluster==state][:, 1], label=f"State {state}")
     ax.set_xlabel("PCA 1")
     ax.set_ylabel("PCA 2")
     ax.grid()
     if save_fig:
         fig.savefig("pca_cluster")
+
+    plt.legend()
     plt.show()
 
-def get_group(cluster_pred ,pred_labels: List[int], sub_tokenizer: Dict[str, int]):
+def get_group(cluster_pred, pred_labels: List[int], sub_tokenizer: Dict[str, int]):
     detokenizer = {v: k for k, v in sub_tokenizer.items()}
     n_clusters = np.unique(cluster_pred)
     group = {str(n): [] for n in n_clusters}
@@ -85,6 +97,44 @@ def get_cluster_intersection(a: Dict[int, List[str]], b: Dict[int, List[str]], k
 
     return intersection
 
+def run_latent_analyse(model, sequence, categorical_col, col="var"):
+    z = []
+    lr = []
+    model.eval()
+    print("[RUN] Start processing latent...")
+    for batch in tqdm(sequence):
+        X_cont = mx.array(batch["data"], dtype=mx.float32)
+        middle = X_cont.shape[1] // 2 
+        X_cat = unflatten(categorical_col, batch["categorical"])
+        latent, _ = model.encode_latent(X_cont, X_cat) # (B, Z)
+        latent = latent[:, middle, :]
+        clr = batch[col]
+        #print("lr shape", lr.shape)
+        if len(clr.shape) > 1 and clr.shape[1] > middle:
+            clr = clr[:, middle]
+        mx.eval(latent)
+        z.append(np.array(latent))
+        lr.append(clr)
+
+    z = np.concat(z, axis=0)
+    lr = np.concat(lr, axis=0).flatten()
+
+    print("[RUN] z shape", z.shape, "lr shape: ", lr.shape)
+    N_STATES = 3
+    quantiles = [n/N_STATES for n in range(1, N_STATES)]
+    abs_lr = np.abs(lr)
+    q = np.quantile(abs_lr, q=quantiles)
+    discretize_lr = np.digitize(abs_lr, bins=q)
+    print("Quantiles: ", q)
+
+    plot_pca_cluster(z, discretize_lr, save_fig=True)
+    plot_umap(z, discretize_lr, True)
+
+    return {
+        "z": z,
+        "categories": discretize_lr,
+        "raw_categories": lr
+    }
 
 
 def run_analyse(df: pl.DataFrame, col, model, tokenizer): # @Arsene to improve
@@ -120,3 +170,5 @@ def run_analyse(df: pl.DataFrame, col, model, tokenizer): # @Arsene to improve
     plot_pca_cluster(embedding=pred, cluster=km_pred, save_fig=False)
     plot_umap(embedding=pred, cluster=km_pred, save_fig=False)
     return cluster
+
+

@@ -2,7 +2,7 @@ mlx
 mlx-data
 numpy
 polars
-umap
 matplotlib
-sklearn
-statsmodel
+scikit-learn
+statsmodels
+umap-learn

@@ -46,6 +46,13 @@ class VAEConfig:
         self.dropout_rate = dropout_rate
         self.compression_ratio = compression_ratio
 
+class CrossVolatilityConfig:
+    def __init__(self, n_asset: int = 512, hidden_size: int = 32, activation = nn.ReLU, dropout_rate: float = 0.2):
+    
+        self.hidden_size = hidden_size
+        self.activation = activation
+        self.dropout_rate = dropout_rate
+        self.n_asset = n_asset
 
 class OptimizerConfig:
 

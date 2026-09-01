@@ -1,2 +1,5 @@
 equities_trade
 *.zip
+weight
+.env
+notebook.ipynb

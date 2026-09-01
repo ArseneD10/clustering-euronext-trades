@@ -67,7 +67,7 @@ class VariationalVolatilityEstimator(nn.Module):
     def _reparametrize(self, input_):
         mu = self.mu(input_)
         if self.training:
-            std = mx.exp(self.logvar(input_)**0.5)
+            std = mx.exp(self.logvar(input_)*0.5)
             mu = mu + std * mx.random.normal(shape=(std.shape))
         return mu
     

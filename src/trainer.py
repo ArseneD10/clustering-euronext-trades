@@ -175,6 +175,66 @@ class VAETrainer(Trainer):
 
         return total_loss / batch_count
 
+class VAETrainer2(Trainer):
+    # Same as VAE Trainer exept here we train the model explictly on reconstruct the middle-window trade
+    def __init__(self, model, optim_config, buffer, categorical_columns, train_size = 0.7, batch_size = 256):
+        super().__init__(model=model, optim_config=optim_config, buffer=buffer, train_size=train_size, batch_size=batch_size, model_name="VAE")
+        self.categorical_columns = categorical_columns
+
+    @staticmethod
+    def _VAE_LOSS(model, c_input, categorical_input):
+        LAMBDA_CAT = 0.01
+        BETA = 0.1
+        middle = c_input.shape[1] // 2 
+        adj_c_input = c_input[:, middle, :]
+        adj_categorical_input = {}
+        for k, v in categorical_input.items():
+            adj_categorical_input[k] = v[:, middle]
+
+        (c_pred, categorical_pred), params = model(features=c_input, categorical_features=categorical_input)
+        
+        c_mse = nn.losses.mse_loss(c_pred[:, middle, :], adj_c_input, reduction="mean")
+        categorical_loss = mx.array(0.0, dtype=mx.float32)
+        for name in list(categorical_input.keys()):
+            categorical_loss += nn.losses.cross_entropy(adj_categorical_input[name], categorical_pred[name][: ,middle], reduction="mean")
+        
+        mu, logvar = params
+        kl_loss = mx.mean(-0.5 * mx.sum(1. + logvar - mu**2 - mx.exp(logvar)))
+
+        return c_mse + (categorical_loss*LAMBDA_CAT) + kl_loss * BETA
+    
+    def _train(self, stream):
+        loss = nn.value_and_grad(self.model, self._VAE_LOSS)
+        total_loss = 0.0
+        batch_count = 0
+        self.model.train()
+
+        for batch in tqdm(stream):
+            categorical   = unflatten(self.categorical_columns, batch["categorical"])
+            data   = mx.array(batch["data"])        
+            loss_value, grad = loss(model=self.model, c_input=data, categorical_input=categorical)        
+            grad, _ = optim.clip_grad_norm(grad, max_norm=1.0)
+            self.optimizer.update(self.model, grad)
+            mx.eval(self.model.parameters(), self.optimizer.state, loss_value)
+            total_loss+= loss_value.item() 
+            batch_count+=1
+
+        return total_loss / batch_count
+
+    def _test(self, stream):
+        self.model.train(False)
+        total_loss = 0.0
+        batch_count = 0
+        
+        for batch in tqdm(stream):
+            data = mx.array(batch["data"]) 
+            categorical   = unflatten(self.categorical_columns, batch["categorical"])
+            loss = self._VAE_LOSS(model=self.model, c_input=data, categorical_input=categorical)
+            total_loss+= loss.item()
+            batch_count+=1
+
+        return total_loss / batch_count
+
 class DiscretizedVolTrainer(Trainer):
 
     def __init__(self, model, optim_config, buffer, categorical_columns, n_states = 3, train_size = 0.7, batch_size = 256):

@@ -1,5 +1,6 @@
 # Trade Flow Market Regime Analysis
-> **Project Status:** 🛠️ *Active Research / Training Phase (as of April 2026)* > **Target:** Unsupervised discovery of market regimes through order-flow embeddings.
+> **Project Status:** 🛠️ *Active Research / Training Phase (updated September 2026)*
+> **Target:** Unsupervised discovery of market regimes through order-flow embeddings.
 
 ---
 
@@ -22,8 +23,10 @@ To test this, a **multi-task transformer encoder** is trained on several complem
 | Field | Value |
 |---|---|
 | Source | Euronext trade tape (CSV) |
+| Universe | 624 small-cap constituents (< EUR 1B market cap) |
 | Coverage | 10 March 2026 → 20 March 2026 |
 | Processing library | [Polars](https://pola.rs/) — chosen for its performance on large tabular datasets |
+| Train/val/test split | Non-overlapping, chronological blocks per asset, with a purge margin around block boundaries to remove leakage from overlapping trade-sequence windows |
 
 The raw tape is read, filtered, and engineered into sequences of trades per asset before being fed into the model.
 
@@ -58,17 +61,17 @@ Two parallel branches encode heterogeneous inputs before fusion:
 
 ### (2) Shared Encoder Block
 
-A standard transformer block with **residual attention + MLP sublayers**
+A standard transformer block with **residual attention + MLP sublayers**.
 
 ### (3) Task Heads
 
 | ID | Task | Description |
 |---|---|---|
 | **(A)** | Variational Auto-Encoder | The model receives trade sequences, compresses them into a latent code, and reconstructs them. Encourages the encoder to learn a *normal* representation of per-asset trade dynamics, conditioned on the company embedding. |
-| **(B)** | Volatility Estimator | Using only price-agnostic features ($\Omega$), the model predicts the **realised standard deviation of returns** over the selected window: $V = f(\Omega)$. |
-| **(C)** *(experimental)* | Volatility Predictor | Predicts the **Volatility estimated** over the next period. Tested in two settings: (i) using frozen encoders from tasks A & B to measure transfer value, (ii) using a randomly, not frozen, initialised  encoder as a baseline. |
+| **(B)** | Volatility Estimator (contemporaneous) | Using only price-agnostic features ($\Omega$), the model estimates the **realised standard deviation of returns over the same window** the features are drawn from: $\hat\sigma = f(\Omega)$. This is a nowcasting task, not a forecast — it asks what volatility the observed order-flow mechanics alone would imply, so that departures from that estimate (Application B) can be read as structural anomalies rather than noise. |
 
-> **Note on task B and C** — A probabilistic output of the form $V = \mu + \sigma \cdot \varepsilon$ was tested but proved unstable during training; the final model uses a direct regression head.
+
+> **Note on tasks B** — A probabilistic output of the form $V = \mu + \sigma \cdot \varepsilon$ was tested but proved unstable during training; the final model uses a direct regression head.
 
 ---
 
@@ -77,9 +80,8 @@ A standard transformer block with **residual attention + MLP sublayers**
 | # | Application |
 |---|---|
 | **A** | **Asset clustering** via company-ticker embeddings (k-means or equivalent on the categorical embeddings) |
-| **B** | **Residual–volatility study**: correlation analysis between model residuals and next-period volatility $\sigma_{t+1}$ |
-| **C** | **Gradient concentration analysis**: examination of where gradients focus in the early layers after fine-tuning steps |
-| **D** | **Activation concentration analysis**: examination of where activation focus all layers after fine-tuning steps |
+| **B** | **Residual–volatility study**: correlation analysis between Task B's estimation residuals ($\sigma_{\mathrm{realised}} - \hat\sigma$) and next-period volatility $\sigma_{t+1}$, as an early signal of structural regime shifts |
+| **C** | **Activation concentration analysis**: examination of where activations concentrate across all layers after fine-tuning steps |
 
 ---
 
@@ -87,7 +89,8 @@ A standard transformer block with **residual attention + MLP sublayers**
 
 ```
 .
-├── notebook.ipynb          # End-to-end research pipeline (data → training → analysis)
+├── training.ipynb          # Data loading, processing, and multi-task model training
+├── analysis.ipynb          # Loads trained models to produce embeddings, clustering & result analysis
 └── src/
     ├── analysis.py         # Residual analysis & activation magnitude inspection
     ├── base_encoder.py     # Shared feature encoding backbone
@@ -104,21 +107,21 @@ A standard transformer block with **residual attention + MLP sublayers**
 
 ## Workflow
 
-All experiments are orchestrated from **`notebook.ipynb`**, which covers:
+Experiments are split across two notebooks:
 
+**`training.ipynb`** — data to trained models:
 1. Data loading and preprocessing via Polars
 2. Feature engineering and sequence construction
-3. Multi-task model training (tasks A, B, and C)
+3. Multi-task model training (tasks A, B, and C), with temporal train/validation/test splits per asset to prevent leakage from overlapping sequence windows
+
+**`analysis.ipynb`** — trained models to results:
 4. Embedding extraction and clustering
 5. Residual, gradient and activation analyses
 
 ---
 
-
 ## Research Insights & Challenges (In Progress)
-Current Observations:
 
-Latent Space: The VAE shows strong convergence on reconstruction, suggesting the encoder effectively captures the "syntax" of trade flows.
+Current observations, to be read as preliminary given training is still ongoing:
 
-The Volatility Gap: Preliminary results for Task B show the model currently struggles to outperform a naive mean baseline (MSE ~1.48 vs 1.45). This suggests a high noise-to-signal ratio in price-agnostic features or a potential distribution shift between training and test sets.
-
+- **Latent Space:** The VAE shows strong convergence on reconstruction, suggesting the encoder effectively captures the "syntax" of trade flows.
