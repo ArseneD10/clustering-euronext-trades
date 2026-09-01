@@ -48,7 +48,7 @@ The raw tape is read, filtered, and engineered into sequences of trades per asse
 │       Transformer — Residual Attention + MLP                │
 │                             │                               │
 │  (3)  TASK HEADS  ◄─────────┘                               │
-│       (A) VAE   (B) Volatility Est.*   (C) Volatility t+1   │
+│       (A) VAE   (B) Volatility Est.*  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -68,7 +68,7 @@ A standard transformer block with **residual attention + MLP sublayers**.
 | ID | Task | Description |
 |---|---|---|
 | **(A)** | Variational Auto-Encoder | The model receives trade sequences, compresses them into a latent code, and reconstructs them. Encourages the encoder to learn a *normal* representation of per-asset trade dynamics, conditioned on the company embedding. |
-| **(B)** | Volatility Estimator (contemporaneous) | Using only price-agnostic features ($\Omega$), the model estimates the **realised standard deviation of returns over the same window** the features are drawn from: $\hat\sigma = f(\Omega)$. This is a nowcasting task, not a forecast — it asks what volatility the observed order-flow mechanics alone would imply, so that departures from that estimate (Application B) can be read as structural anomalies rather than noise. |
+| **(B)** | Volatility Estimator (contemporaneous) | Using only price-agnostic features ($\Omega$), the model estimates the **realised standard deviation of returns over the same window** the features are drawn from: $\hat\sigma = f(\Omega)$. This is a nowcasting task, not a forecast, it asks what volatility the observed order-flow mechanics alone would imply, so that departures from that estimate (Application B) can be read as structural anomalies rather than noise. |
 
 
 > **Note on tasks B** — A probabilistic output of the form $V = \mu + \sigma \cdot \varepsilon$ was tested but proved unstable during training; the final model uses a direct regression head.
@@ -81,7 +81,8 @@ A standard transformer block with **residual attention + MLP sublayers**.
 |---|---|
 | **A** | **Asset clustering** via company-ticker embeddings (k-means or equivalent on the categorical embeddings) |
 | **B** | **Residual–volatility study**: correlation analysis between Task B's estimation residuals ($\sigma_{\mathrm{realised}} - \hat\sigma$) and next-period volatility $\sigma_{t+1}$, as an early signal of structural regime shifts |
-| **C** | **Activation concentration analysis**: examination of where activations concentrate across all layers after fine-tuning steps |
+| **C** | **Trade clustering and impact on price**: via umap decomposition + kmeans clustering, analysis which trade induce most volatility in the market |
+| **D** | **Activation concentration analysis**: examination of where activations concentrate across all layers after fine-tuning steps |
 
 ---
 
