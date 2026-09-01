@@ -26,7 +26,7 @@ To test this, a **multi-task transformer encoder** is trained on several complem
 | Universe | 624 small-cap constituents (< EUR 1B market cap) |
 | Coverage | 10 March 2026 → 20 March 2026 |
 | Processing library | [Polars](https://pola.rs/) — chosen for its performance on large tabular datasets |
-| Train/val/test split | Non-overlapping, chronological blocks per asset, with a purge margin around block boundaries to remove leakage from overlapping trade-sequence windows |
+| Train/test split | Non-overlapping, chronological blocks per asset, with a purge margin around block boundaries to remove leakage from overlapping trade-sequence windows |
 
 The raw tape is read, filtered, and engineered into sequences of trades per asset before being fed into the model.
 
